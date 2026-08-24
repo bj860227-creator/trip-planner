@@ -1,0 +1,16 @@
+{
+  "name": "trip-planner-backend",
+  "version": "1.0.0",
+  "description": "인원수/연령대/장소/예산 기반 맞춤 여행 추천 API",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0"
+  }
+}
