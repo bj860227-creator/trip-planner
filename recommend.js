@@ -1,2 +1,0 @@
-GOOGLE_PLACES_API_KEY=your_google_places_api_key_here
-PORT=3000
