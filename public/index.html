@@ -35,16 +35,28 @@
   .place-card{background:#fff; border-radius:14px; padding:16px 18px; box-shadow:0 1px 0 rgba(28,43,63,.06); border:1px solid #E1E4D6; margin-bottom:10px;}
   .place-card h3{font-size:15px; margin-bottom:4px;}
   .place-card .meta{font-size:12.5px; color:var(--ink-soft);}
-  .route-stop{margin-bottom:14px; padding-left:14px; border-left:3px solid var(--amber);}
-  .rs-name{font-weight:700; font-size:14.5px;}
-  .rs-addr{font-size:13px; color:var(--ink-soft);}
+  .place-card .price{font-size:13px; color:var(--teal-dark); font-weight:600; margin-top:4px;}
+  .place-card .reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
+  .day-tabs{display:flex; gap:8px; margin:16px 0; flex-wrap:wrap;}
+  .day-tab{border:1.5px solid var(--line); background:#fff; border-radius:999px; padding:6px 16px; font-size:13px; font-weight:600; cursor:pointer; color:var(--ink-soft);}
+  .day-tab.active{background:var(--teal); border-color:var(--teal); color:#fff;}
+  .day-panel{display:none;}
+  .day-panel.active{display:block;}
+  .itin-stop{display:flex; gap:14px; margin-bottom:16px; padding-left:2px; border-left:3px solid var(--amber); padding-left:14px;}
+  .itin-time{min-width:60px; font-weight:700; font-size:13px; color:var(--amber); flex-shrink:0;}
+  .itin-name{font-weight:700; font-size:15px;}
+  .itin-type{font-size:12px; color:var(--teal-dark); font-weight:600;}
+  .itin-addr{font-size:12.5px; color:var(--ink-soft);}
+  .itin-price{font-size:12.5px; color:var(--teal-dark);}
+  .itin-reason{font-size:12.5px; color:var(--ink-soft);}
+  .menu-notice{font-size:12px; color:var(--ink-soft); margin-top:4px; font-style:italic;}
   @media (max-width:520px){.field-row{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 <div class="hero">
   <h1>우리 멤버에 맞는 여정 짜기</h1>
-  <p>인원, 나이, 성별, 장소, 예산만 넣으면 실제 데이터로 추천해드려요.</p>
+  <p>인원, 나이, 성별, 장소, 예산만 넣으면 실제 데이터로 시간대별 일정까지 짜드려요.</p>
 </div>
 <div class="wrap">
   <form id="trip-form" class="card">
@@ -60,7 +72,7 @@
     </div>
     <div class="field-row">
       <div class="field">
-        <label for="days">여행 일수</label>
+        <label for="days">여행 일수 (1박 2일 → 2)</label>
         <input id="days" type="number" min="1" value="1" />
       </div>
       <div class="field">
@@ -135,16 +147,38 @@ form.addEventListener('submit', async (e) => {
   } finally { submitBtn.disabled = false; }
 });
 function placeCard(p){
-  return `<div class="place-card"><h3>${p.name}</h3><div class="meta">★ ${p.rating ?? '-'} · 리뷰 ${p.ratingCount ?? 0} · ${p.address || ''}</div></div>`;
+  return `<div class="place-card"><h3>${p.name}</h3>
+    <div class="meta">★ ${p.rating ?? '-'} · 리뷰 ${p.ratingCount ?? 0} · ${p.address || ''}</div>
+    ${p.priceEstimate ? `<div class="price">💰 ${p.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
+    ${p.reason ? `<div class="reason">✓ ${p.reason}</div>` : ''}
+    </div>`;
 }
 function renderSection(title, items){
   if(!items || items.length === 0) return '';
   return `<div class="section-title">${title}</div>${items.map(placeCard).join('')}`;
 }
-function renderRoute(route){
-  if(!route || route.length === 0) return '';
-  return `<div class="section-title">추천 동선</div>${route.map((p,i) => `
-    <div class="route-stop"><div class="rs-name">${i+1}. ${p.name}</div><div class="rs-addr">${p.address || ''}</div></div>`).join('')}`;
+function renderItinerary(itinerary){
+  if(!itinerary || itinerary.length === 0) return '';
+  const tabs = itinerary.map((d,i) => `<button type="button" class="day-tab ${i===0?'active':''}" data-day="${i}">Day ${d.day}</button>`).join('');
+  const panels = itinerary.map((d,i) => `
+    <div class="day-panel ${i===0?'active':''}" data-day="${i}">
+      ${d.stops.map(s => `
+        <div class="itin-stop">
+          <div class="itin-time">${s.time}</div>
+          <div>
+            <div class="itin-type">${s.typeLabel || s.category || ''}</div>
+            <div class="itin-name">${s.name}</div>
+            <div class="itin-addr">${s.address || ''}</div>
+            ${s.priceEstimate ? `<div class="itin-price">💰 ${s.priceEstimate} (추정치)</div>` : ''}
+            ${s.reason ? `<div class="itin-reason">✓ ${s.reason}</div>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`).join('');
+  return `
+    <div class="section-title">일정표 (시간대별 동선)</div>
+    <div class="menu-notice">※ 정확한 메뉴 정보는 없어서 대략적인 음식 종류만 안내해요. 방문 전 리뷰를 참고해주세요.</div>
+    <div class="day-tabs">${tabs}</div>
+    ${panels}`;
 }
 function renderResults(data){
   const labels = {infant:'영유아',kid:'어린이',teen:'청소년',young:'청년',middle:'중장년',senior:'시니어'};
@@ -153,92 +187,21 @@ function renderResults(data){
     ? `<span class="stamp">남 ${data.genderCounts.male || 0}명 · 여 ${data.genderCounts.female || 0}명</span>` : '';
   resultsEl.innerHTML = `
     <div>${chips}${genderChip}<span class="stamp">${data.budgetTier.label}</span></div>
-    ${renderSection('맛집', data.recommendations.restaurants)}
-    ${renderSection('카페', data.recommendations.cafes)}
-    ${renderSection('숙소', data.recommendations.lodgings)}
-    ${renderSection('가볼만한 곳', data.recommendations.attractions)}
-    ${renderRoute(data.route)}
+    ${renderItinerary(data.itinerary)}
+    ${renderSection('맛집 전체 목록', data.recommendations.restaurants)}
+    ${renderSection('카페 전체 목록', data.recommendations.cafes)}
+    ${renderSection('숙소 전체 목록', data.recommendations.lodgings)}
+    ${renderSection('가볼만한 곳 전체 목록', data.recommendations.attractions)}
   `;
+  resultsEl.querySelectorAll('.day-tab').forEach(btn => {
+    btn.onclick = () => {
+      resultsEl.querySelectorAll('.day-tab').forEach(b => b.classList.remove('active'));
+      resultsEl.querySelectorAll('.day-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      resultsEl.querySelector(`.day-panel[data-day="${btn.dataset.day}"]`).classList.add('active');
+    };
+  });
 }
 </script>
 </body>
 </html>
-2) server.js 전체 교체
-
-server.js 클릭 → 연필 아이콘 → 전체 선택/삭제 → 아래 코드 붙여넣기:
-
-javascript
-require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const { searchPlaces } = require('./lib/places');
-const { analyzeAgeGroups, budgetTier, rankPlaces, buildRoute } = require('./lib/recommend');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
-
-app.post('/api/recommend', async (req, res) => {
-  try {
-    const { people, location, budget, days } = req.body;
-
-    if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
-      return res.status(400).json({
-        error: 'people(배열), location, budget은 필수입니다.',
-      });
-    }
-
-    const ages = people.map((p) => Number(p.age));
-    const genderCounts = people.reduce((acc, p) => {
-      acc[p.gender] = (acc[p.gender] || 0) + 1;
-      return acc;
-    }, {});
-
-    const ageProfile = analyzeAgeGroups(ages);
-    const tier = budgetTier(Number(budget), people.length, Number(days) || 1);
-
-    const [restaurants, cafes, lodgings, attractions] = await Promise.all([
-      searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
-      searchPlaces(`${location} 카페`, { maxResultCount: 12, minRating: 3.5 }),
-      searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.5 }),
-      searchPlaces(
-        ageProfile.hasYoungChildren ? `${location} 아이와 가볼만한 곳` : `${location} 가볼만한 곳`,
-        { maxResultCount: 12, minRating: 3.5 }
-      ),
-    ]);
-
-    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 5);
-    const topCafes = rankPlaces(cafes, ageProfile, tier, 5);
-    const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3);
-    const topAttractions = rankPlaces(attractions, ageProfile, tier, 6);
-
-    const routeCandidates = [
-      ...topAttractions.slice(0, 4),
-      topRestaurants[0],
-      topCafes[0],
-    ].filter(Boolean);
-    const route = buildRoute(routeCandidates);
-
-    res.json({
-      ageProfile,
-      genderCounts,
-      budgetTier: tier,
-      recommendations: {
-        restaurants: topRestaurants,
-        cafes: topCafes,
-        lodgings: topLodgings,
-        attractions: topAttractions,
-      },
-      route,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || '서버 오류가 발생했습니다.' });
-  }
-});
-
-app.get('/api/health', (req, res) => res.json({ ok: true }));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Trip planner API running on port ${PORT}`));
