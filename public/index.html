@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>여정표 — 우리 멤버에 맞는 여행 추천</title>
+<style>
+  :root{
+    --paper:#EDEFE6; --ink:#1C2B3F; --ink-soft:#4A5A6B;
+    --teal:#1F7A6C; --teal-dark:#155A50; --amber:#D9992B; --coral:#C1543D; --line:#C9CDBC;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--paper); color:var(--ink); font-family:sans-serif; line-height:1.55;}
+  h1,h2,h3{margin:0; color:var(--ink);}
+  .wrap{max-width:920px; margin:0 auto; padding:0 20px 80px;}
+  .hero{padding:40px 20px; max-width:920px; margin:0 auto;}
+  .hero h1{font-size:clamp(28px,5vw,44px); line-height:1.2;}
+  .hero p{color:var(--ink-soft); font-size:16px;}
+  .card{background:#fff; border-radius:16px; padding:28px; box-shadow:0 10px 26px rgba(28,43,63,.1);}
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
+  .field label{font-size:13px; font-weight:600; color:var(--ink-soft); display:block; margin-bottom:6px;}
+  .field input{width:100%; border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; font-size:15px; background:var(--paper);}
+  .ages-box{display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1.5px dashed var(--line); border-radius:10px; background:var(--paper); min-height:48px; align-items:center;}
+  .age-chip{display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:4px 6px 4px 12px; font-size:13px;}
+  .age-chip input{width:48px; border:none; background:transparent; font-size:13px; padding:2px;}
+  .age-chip button{border:none; background:#EDEFE2; border-radius:999px; width:20px; height:20px; cursor:pointer; color:var(--ink-soft);}
+  .add-age{border:1.5px dashed var(--teal); color:var(--teal-dark); background:none; border-radius:999px; padding:5px 12px; font-size:13px; font-weight:600; cursor:pointer;}
+  .submit-btn{margin-top:18px; width:100%; background:var(--coral); color:#fff; border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:700; cursor:pointer;}
+  .submit-btn:disabled{opacity:.6;}
+  .status{margin-top:12px; font-size:13px; color:var(--ink-soft);}
+  .error{color:var(--coral); font-weight:600;}
+  .section-title{margin:34px 0 4px; font-size:20px;}
+  .stamp{display:inline-block; border:1.5px solid var(--teal); color:var(--teal-dark); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:700; background:#fff; margin:4px 6px 4px 0;}
+  .place-card{background:#fff; border-radius:14px; padding:16px 18px; box-shadow:0 1px 0 rgba(28,43,63,.06); border:1px solid #E1E4D6; margin-bottom:10px;}
+  .place-card h3{font-size:15px; margin-bottom:4px;}
+  .place-card .meta{font-size:12.5px; color:var(--ink-soft);}
+  .route-stop{margin-bottom:14px; padding-left:14px; border-left:3px solid var(--amber);}
+  .rs-name{font-weight:700; font-size:14.5px;}
+  .rs-addr{font-size:13px; color:var(--ink-soft);}
+  @media (max-width:520px){.field-row{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>우리 멤버에 맞는 여정 짜기</h1>
+  <p>인원, 나이, 장소, 예산만 넣으면 실제 데이터로 추천해드려요.</p>
+</div>
+<div class="wrap">
+  <form id="trip-form" class="card">
+    <div class="field-row">
+      <div class="field">
+        <label for="location">장소</label>
+        <input id="location" type="text" placeholder="예: 천안, 제주" required />
+      </div>
+      <div class="field">
+        <label for="budget">총 여행경비 (원)</label>
+        <input id="budget" type="number" min="0" placeholder="예: 800000" required />
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="days">여행 일수</label>
+        <input id="days" type="number" min="1" value="1" />
+      </div>
+      <div class="field">
+        <label>인원수</label>
+        <input id="peopleCountDisplay" type="text" readonly />
+      </div>
+    </div>
+    <div class="field">
+      <label>인원 연령대 (만 나이, 0세부터)</label>
+      <div id="ages-box" class="ages-box"></div>
+      <button type="button" id="add-age" class="add-age">+ 인원 추가</button>
+    </div>
+    <button type="submit" class="submit-btn" id="submit-btn">여정 추천 받기</button>
+    <div id="status" class="status"></div>
+  </form>
+  <div id="results"></div>
+</div>
+<script>
+const agesBox = document.getElementById('ages-box');
+const peopleCountDisplay = document.getElementById('peopleCountDisplay');
+function addAgeChip(value=20){
+  const chip = document.createElement('div');
+  chip.className = 'age-chip';
+  chip.innerHTML = `<input type="number" min="0" max="120" value="${value}" /><button type="button">×</button>`;
+  chip.querySelector('button').onclick = () => { chip.remove(); updateCount(); };
+  agesBox.appendChild(chip);
+  updateCount();
+}
+function updateCount(){ peopleCountDisplay.value = agesBox.querySelectorAll('.age-chip').length + '명'; }
+document.getElementById('add-age').onclick = () => addAgeChip();
+addAgeChip(32); addAgeChip(29);
+function getAges(){ return [...agesBox.querySelectorAll('.age-chip input')].map(i => Number(i.value)); }
+const form = document.getElementById('trip-form');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+const submitBtn = document.getElementById('submit-btn');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const ages = getAges();
+  if(ages.length === 0){ statusEl.textContent = '최소 1명의 연령을 입력해주세요.'; statusEl.className='status error'; return; }
+  const payload = {
+    peopleCount: ages.length, ages,
+    location: document.getElementById('location').value.trim(),
+    budget: Number(document.getElementById('budget').value),
+    days: Number(document.getElementById('days').value) || 1,
+  };
+  submitBtn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = '여정을 짜는 중입니다... (최대 1분 정도 걸릴 수 있어요)';
+  resultsEl.innerHTML = '';
+  try {
+    const res = await fetch('/api/recommend', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error || '요청에 실패했습니다.');
+    statusEl.textContent = '';
+    renderResults(data);
+  } catch(err){
+    statusEl.className = 'status error';
+    statusEl.textContent = err.message;
+  } finally { submitBtn.disabled = false; }
+});
+function placeCard(p){
+  return `<div class="place-card"><h3>${p.name}</h3><div class="meta">★ ${p.rating ?? '-'} · 리뷰 ${p.ratingCount ?? 0} · ${p.address || ''}</div></div>`;
+}
+function renderSection(title, items){
+  if(!items || items.length === 0) return '';
+  return `<div class="section-title">${title}</div>${items.map(placeCard).join('')}`;
+}
+function renderRoute(route){
+  if(!route || route.length === 0) return '';
+  return `<div class="section-title">추천 동선</div>${route.map((p,i) => `
+    <div class="route-stop"><div class="rs-name">${i+1}. ${p.name}</div><div class="rs-addr">${p.address || ''}</div></div>`).join('')}`;
+}
+function renderResults(data){
+  const labels = {infant:'영유아',kid:'어린이',teen:'청소년',young:'청년',middle:'중장년',senior:'시니어'};
+  const chips = Object.entries(data.ageProfile.counts).filter(([,c])=>c>0).map(([k,c])=>`<span class="stamp">${labels[k]} ${c}명</span>`).join('');
+  resultsEl.innerHTML = `
+    <div>${chips}<span class="stamp">${data.budgetTier.label}</span></div>
+    ${renderSection('맛집', data.recommendations.restaurants)}
+    ${renderSection('카페', data.recommendations.cafes)}
+    ${renderSection('숙소', data.recommendations.lodgings)}
+    ${renderSection('가볼만한 곳', data.recommendations.attractions)}
+    ${renderRoute(data.route)}
+  `;
+}
+</script>
+</body>
+</html>
