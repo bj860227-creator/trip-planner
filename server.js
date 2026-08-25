@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { searchPlaces } = require('./lib/places');
-const { analyzeAgeGroups, budgetTier, rankPlaces, buildRoute } = require('./lib/recommend');
+const { analyzeAgeGroups, budgetTier, rankPlaces, buildDayItinerary } = require('./lib/recommend');
 
 const app = express();
 app.use(cors());
@@ -14,9 +14,7 @@ app.post('/api/recommend', async (req, res) => {
     const { people, location, budget, days } = req.body;
 
     if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
-      return res.status(400).json({
-        error: 'people(배열), location, budget은 필수입니다.',
-      });
+      return res.status(400).json({ error: 'people(배열), location, budget은 필수입니다.' });
     }
 
     const ages = people.map((p) => Number(p.age));
@@ -24,9 +22,10 @@ app.post('/api/recommend', async (req, res) => {
       acc[p.gender] = (acc[p.gender] || 0) + 1;
       return acc;
     }, {});
+    const dayCount = Number(days) || 1;
 
     const ageProfile = analyzeAgeGroups(ages);
-    const tier = budgetTier(Number(budget), people.length, Number(days) || 1);
+    const tier = budgetTier(Number(budget), people.length, dayCount);
 
     const [restaurants, cafes, lodgings, attractions] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
@@ -38,17 +37,12 @@ app.post('/api/recommend', async (req, res) => {
       ),
     ]);
 
-    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 5);
-    const topCafes = rankPlaces(cafes, ageProfile, tier, 5);
-    const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3);
-    const topAttractions = rankPlaces(attractions, ageProfile, tier, 6);
+    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 6, 'restaurant');
+    const topCafes = rankPlaces(cafes, ageProfile, tier, 5, 'cafe');
+    const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3, 'lodging');
+    const topAttractions = rankPlaces(attractions, ageProfile, tier, 8, 'attraction');
 
-    const routeCandidates = [
-      ...topAttractions.slice(0, 4),
-      topRestaurants[0],
-      topCafes[0],
-    ].filter(Boolean);
-    const route = buildRoute(routeCandidates);
+    const itinerary = buildDayItinerary(dayCount, topRestaurants, topCafes, topAttractions, topLodgings);
 
     res.json({
       ageProfile,
@@ -60,7 +54,7 @@ app.post('/api/recommend', async (req, res) => {
         lodgings: topLodgings,
         attractions: topAttractions,
       },
-      route,
+      itinerary,
     });
   } catch (err) {
     console.error(err);
