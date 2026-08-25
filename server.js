@@ -5,22 +5,28 @@ const { searchPlaces } = require('./lib/places');
 const { analyzeAgeGroups, budgetTier, rankPlaces, buildRoute } = require('./lib/recommend');
 
 const app = express();
-app.use(express.static('public'));
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 app.post('/api/recommend', async (req, res) => {
   try {
-    const { peopleCount, ages, location, budget, days } = req.body;
+    const { people, location, budget, days } = req.body;
 
-    if (!peopleCount || !Array.isArray(ages) || !location || !budget) {
+    if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
       return res.status(400).json({
-        error: 'peopleCount, ages(배열), location, budget은 필수입니다.',
+        error: 'people(배열), location, budget은 필수입니다.',
       });
     }
 
+    const ages = people.map((p) => Number(p.age));
+    const genderCounts = people.reduce((acc, p) => {
+      acc[p.gender] = (acc[p.gender] || 0) + 1;
+      return acc;
+    }, {});
+
     const ageProfile = analyzeAgeGroups(ages);
-    const tier = budgetTier(Number(budget), Number(peopleCount), Number(days) || 1);
+    const tier = budgetTier(Number(budget), people.length, Number(days) || 1);
 
     const [restaurants, cafes, lodgings, attractions] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
@@ -46,6 +52,7 @@ app.post('/api/recommend', async (req, res) => {
 
     res.json({
       ageProfile,
+      genderCounts,
       budgetTier: tier,
       recommendations: {
         restaurants: topRestaurants,
