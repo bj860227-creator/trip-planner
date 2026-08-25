@@ -5,6 +5,7 @@ const { searchPlaces } = require('./lib/places');
 const { analyzeAgeGroups, budgetTier, rankPlaces, buildRoute } = require('./lib/recommend');
 
 const app = express();
+app.use(express.static('public'));
 app.use(cors());
 app.use(express.json());
 
