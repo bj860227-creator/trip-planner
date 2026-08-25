@@ -21,8 +21,9 @@
   .field label{font-size:13px; font-weight:600; color:var(--ink-soft); display:block; margin-bottom:6px;}
   .field input{width:100%; border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; font-size:15px; background:var(--paper);}
   .ages-box{display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1.5px dashed var(--line); border-radius:10px; background:var(--paper); min-height:48px; align-items:center;}
-  .age-chip{display:flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:4px 6px 4px 12px; font-size:13px;}
-  .age-chip input{width:48px; border:none; background:transparent; font-size:13px; padding:2px;}
+  .age-chip{display:flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:4px 6px 4px 12px; font-size:13px;}
+  .age-chip input{width:42px; border:none; background:transparent; font-size:13px; padding:2px;}
+  .age-chip select{border:none; background:transparent; font-size:13px; padding:2px; color:var(--ink);}
   .age-chip button{border:none; background:#EDEFE2; border-radius:999px; width:20px; height:20px; cursor:pointer; color:var(--ink-soft);}
   .add-age{border:1.5px dashed var(--teal); color:var(--teal-dark); background:none; border-radius:999px; padding:5px 12px; font-size:13px; font-weight:600; cursor:pointer;}
   .submit-btn{margin-top:18px; width:100%; background:var(--coral); color:#fff; border:none; border-radius:12px; padding:13px; font-size:15px; font-weight:700; cursor:pointer;}
@@ -43,7 +44,7 @@
 <body>
 <div class="hero">
   <h1>우리 멤버에 맞는 여정 짜기</h1>
-  <p>인원, 나이, 장소, 예산만 넣으면 실제 데이터로 추천해드려요.</p>
+  <p>인원, 나이, 성별, 장소, 예산만 넣으면 실제 데이터로 추천해드려요.</p>
 </div>
 <div class="wrap">
   <form id="trip-form" class="card">
@@ -68,7 +69,7 @@
       </div>
     </div>
     <div class="field">
-      <label>인원 연령대 (만 나이, 0세부터)</label>
+      <label>인원 (만 나이 + 성별)</label>
       <div id="ages-box" class="ages-box"></div>
       <button type="button" id="add-age" class="add-age">+ 인원 추가</button>
     </div>
@@ -80,28 +81,38 @@
 <script>
 const agesBox = document.getElementById('ages-box');
 const peopleCountDisplay = document.getElementById('peopleCountDisplay');
-function addAgeChip(value=20){
+function addAgeChip(value=20, gender='male'){
   const chip = document.createElement('div');
   chip.className = 'age-chip';
-  chip.innerHTML = `<input type="number" min="0" max="120" value="${value}" /><button type="button">×</button>`;
+  chip.innerHTML = `<input type="number" min="0" max="120" value="${value}" />세
+    <select>
+      <option value="male" ${gender==='male'?'selected':''}>남</option>
+      <option value="female" ${gender==='female'?'selected':''}>여</option>
+    </select>
+    <button type="button">×</button>`;
   chip.querySelector('button').onclick = () => { chip.remove(); updateCount(); };
   agesBox.appendChild(chip);
   updateCount();
 }
 function updateCount(){ peopleCountDisplay.value = agesBox.querySelectorAll('.age-chip').length + '명'; }
 document.getElementById('add-age').onclick = () => addAgeChip();
-addAgeChip(32); addAgeChip(29);
-function getAges(){ return [...agesBox.querySelectorAll('.age-chip input')].map(i => Number(i.value)); }
+addAgeChip(32,'male'); addAgeChip(29,'female');
+function getPeople(){
+  return [...agesBox.querySelectorAll('.age-chip')].map(chip => ({
+    age: Number(chip.querySelector('input').value),
+    gender: chip.querySelector('select').value,
+  }));
+}
 const form = document.getElementById('trip-form');
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const submitBtn = document.getElementById('submit-btn');
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const ages = getAges();
-  if(ages.length === 0){ statusEl.textContent = '최소 1명의 연령을 입력해주세요.'; statusEl.className='status error'; return; }
+  const people = getPeople();
+  if(people.length === 0){ statusEl.textContent = '최소 1명의 정보를 입력해주세요.'; statusEl.className='status error'; return; }
   const payload = {
-    peopleCount: ages.length, ages,
+    peopleCount: people.length, people,
     location: document.getElementById('location').value.trim(),
     budget: Number(document.getElementById('budget').value),
     days: Number(document.getElementById('days').value) || 1,
@@ -138,8 +149,10 @@ function renderRoute(route){
 function renderResults(data){
   const labels = {infant:'영유아',kid:'어린이',teen:'청소년',young:'청년',middle:'중장년',senior:'시니어'};
   const chips = Object.entries(data.ageProfile.counts).filter(([,c])=>c>0).map(([k,c])=>`<span class="stamp">${labels[k]} ${c}명</span>`).join('');
+  const genderChip = data.genderCounts
+    ? `<span class="stamp">남 ${data.genderCounts.male || 0}명 · 여 ${data.genderCounts.female || 0}명</span>` : '';
   resultsEl.innerHTML = `
-    <div>${chips}<span class="stamp">${data.budgetTier.label}</span></div>
+    <div>${chips}${genderChip}<span class="stamp">${data.budgetTier.label}</span></div>
     ${renderSection('맛집', data.recommendations.restaurants)}
     ${renderSection('카페', data.recommendations.cafes)}
     ${renderSection('숙소', data.recommendations.lodgings)}
@@ -150,3 +163,82 @@ function renderResults(data){
 </script>
 </body>
 </html>
+2) server.js 전체 교체
+
+server.js 클릭 → 연필 아이콘 → 전체 선택/삭제 → 아래 코드 붙여넣기:
+
+javascript
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { searchPlaces } = require('./lib/places');
+const { analyzeAgeGroups, budgetTier, rankPlaces, buildRoute } = require('./lib/recommend');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+app.post('/api/recommend', async (req, res) => {
+  try {
+    const { people, location, budget, days } = req.body;
+
+    if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
+      return res.status(400).json({
+        error: 'people(배열), location, budget은 필수입니다.',
+      });
+    }
+
+    const ages = people.map((p) => Number(p.age));
+    const genderCounts = people.reduce((acc, p) => {
+      acc[p.gender] = (acc[p.gender] || 0) + 1;
+      return acc;
+    }, {});
+
+    const ageProfile = analyzeAgeGroups(ages);
+    const tier = budgetTier(Number(budget), people.length, Number(days) || 1);
+
+    const [restaurants, cafes, lodgings, attractions] = await Promise.all([
+      searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
+      searchPlaces(`${location} 카페`, { maxResultCount: 12, minRating: 3.5 }),
+      searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.5 }),
+      searchPlaces(
+        ageProfile.hasYoungChildren ? `${location} 아이와 가볼만한 곳` : `${location} 가볼만한 곳`,
+        { maxResultCount: 12, minRating: 3.5 }
+      ),
+    ]);
+
+    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 5);
+    const topCafes = rankPlaces(cafes, ageProfile, tier, 5);
+    const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3);
+    const topAttractions = rankPlaces(attractions, ageProfile, tier, 6);
+
+    const routeCandidates = [
+      ...topAttractions.slice(0, 4),
+      topRestaurants[0],
+      topCafes[0],
+    ].filter(Boolean);
+    const route = buildRoute(routeCandidates);
+
+    res.json({
+      ageProfile,
+      genderCounts,
+      budgetTier: tier,
+      recommendations: {
+        restaurants: topRestaurants,
+        cafes: topCafes,
+        lodgings: topLodgings,
+        attractions: topAttractions,
+      },
+      route,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message || '서버 오류가 발생했습니다.' });
+  }
+});
+
+app.get('/api/health', (req, res) => res.json({ ok: true }));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Trip planner API running on port ${PORT}`));
