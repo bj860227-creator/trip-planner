@@ -30,15 +30,15 @@ app.post('/api/recommend', async (req, res) => {
     const [restaurants, cafes, lodgings, attractions] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
       searchPlaces(`${location} 카페`, { maxResultCount: 12, minRating: 3.5 }),
-      searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.5 }),
+      searchPlaces(`${location} 조식 포함 숙소`, { maxResultCount: 10, minRating: 3.5 }),
       searchPlaces(
         ageProfile.hasYoungChildren ? `${location} 아이와 가볼만한 곳` : `${location} 가볼만한 곳`,
         { maxResultCount: 12, minRating: 3.5 }
       ),
     ]);
 
-    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 6, 'restaurant');
-    const topCafes = rankPlaces(cafes, ageProfile, tier, 5, 'cafe');
+    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 10, 'restaurant');
+    const topCafes = rankPlaces(cafes, ageProfile, tier, 8, 'cafe');
     const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3, 'lodging');
     const topAttractions = rankPlaces(attractions, ageProfile, tier, 8, 'attraction');
 
