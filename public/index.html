@@ -50,6 +50,18 @@
   .itin-price{font-size:12.5px; color:var(--teal-dark);}
   .itin-reason{font-size:12.5px; color:var(--ink-soft);}
   .menu-notice{font-size:12px; color:var(--ink-soft); margin-top:4px; font-style:italic;}
+  .slot-block{margin-bottom:20px;}
+  .slot-header{margin-bottom:8px;}
+  .slot-time{font-weight:700; color:var(--amber); font-size:13px; margin-right:8px;}
+  .slot-label{font-weight:700; font-size:15px;}
+  .slot-options{display:grid; gap:8px;}
+  .opt-card{display:flex; gap:10px; align-items:flex-start; background:#fff; border:1.5px solid #E1E4D6; border-radius:12px; padding:12px 14px; cursor:pointer;}
+  .opt-card input{margin-top:4px;}
+  .opt-name{font-weight:700; font-size:14.5px;}
+  .opt-menu{font-weight:500; color:var(--teal-dark); font-size:13px;}
+  .opt-addr{font-size:12.5px; color:var(--ink-soft);}
+  .opt-price{font-size:12.5px; color:var(--teal-dark); margin-top:2px;}
+  .opt-reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
   @media (max-width:520px){.field-row{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -162,21 +174,26 @@ function renderItinerary(itinerary){
   const tabs = itinerary.map((d,i) => `<button type="button" class="day-tab ${i===0?'active':''}" data-day="${i}">Day ${d.day}</button>`).join('');
   const panels = itinerary.map((d,i) => `
     <div class="day-panel ${i===0?'active':''}" data-day="${i}">
-      ${d.stops.map(s => `
-        <div class="itin-stop">
-          <div class="itin-time">${s.time}</div>
-          <div>
-            <div class="itin-type">${s.typeLabel || s.category || ''}</div>
-            <div class="itin-name">${s.name}</div>
-            <div class="itin-addr">${s.address || ''}</div>
-            ${s.priceEstimate ? `<div class="itin-price">💰 ${s.priceEstimate} (추정치)</div>` : ''}
-            ${s.reason ? `<div class="itin-reason">✓ ${s.reason}</div>` : ''}
+      ${d.slots.map(slot => `
+        <div class="slot-block">
+          <div class="slot-header"><span class="slot-time">${slot.time}</span> <span class="slot-label">${slot.label}</span></div>
+          <div class="slot-options">
+            ${slot.options.map((o,oi) => `
+              <label class="opt-card">
+                <input type="radio" name="d${i}-${slot.time}-${slot.label}" ${oi===0?'checked':''} />
+                <div>
+                  <div class="opt-name">${o.name}${o.menu ? ` <span class="opt-menu">· ${o.menu}</span>` : ''}</div>
+                  <div class="opt-addr">${o.address || ''}</div>
+                  ${o.priceEstimate ? `<div class="opt-price">💰 ${o.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
+                  ${o.reason ? `<div class="opt-reason">✓ ${o.reason}</div>` : ''}
+                </div>
+              </label>`).join('')}
           </div>
         </div>`).join('')}
     </div>`).join('');
   return `
-    <div class="section-title">일정표 (시간대별 동선)</div>
-    <div class="menu-notice">※ 정확한 메뉴 정보는 없어서 대략적인 음식 종류만 안내해요. 방문 전 리뷰를 참고해주세요.</div>
+    <div class="section-title">일정표</div>
+    <div class="menu-notice">※ 정확한 메뉴는 없어서 대략적인 음식 종류만 안내해요. 선택지 중 마음에 드는 곳으로 골라서 다니시면 돼요.</div>
     <div class="day-tabs">${tabs}</div>
     ${panels}`;
 }
