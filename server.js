@@ -2,7 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { searchPlaces } = require('./lib/places');
-const { analyzeAgeGroups, budgetTier, rankPlaces, buildDayItinerary } = require('./lib/recommend');
+const {
+  analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
+  buildDayItinerary, filterOutChains,
+} = require('./lib/recommend');
 
 const app = express();
 app.use(cors());
@@ -11,7 +14,7 @@ app.use(express.static('public'));
 
 app.post('/api/recommend', async (req, res) => {
   try {
-    const { people, location, budget, days } = req.body;
+    const { people, location, budget, days, lodgingName, flightDeparture, flightReturn } = req.body;
 
     if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
       return res.status(400).json({ error: 'people(배열), location, budget은 필수입니다.' });
@@ -23,36 +26,63 @@ app.post('/api/recommend', async (req, res) => {
       return acc;
     }, {});
     const dayCount = Number(days) || 1;
-
     const ageProfile = analyzeAgeGroups(ages);
-    const tier = budgetTier(Number(budget), people.length, dayCount);
+    const tiers = computeBudgetTiers(Number(budget), people.length, dayCount);
 
-    const [restaurants, cafes, lodgings, attractions] = await Promise.all([
-      searchPlaces(`${location} 맛집`, { maxResultCount: 12, minRating: 3.5 }),
-      searchPlaces(`${location} 카페`, { maxResultCount: 12, minRating: 3.5 }),
-      searchPlaces(`${location} 조식 포함 숙소`, { maxResultCount: 10, minRating: 3.5 }),
+    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 예산대에 맞는 조식 포함 숙소를 검색
+    let lodging = null;
+    if (lodgingName && lodgingName.trim()) {
+      const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
+      if (named[0]) {
+        lodging = rankPlaces(named, ageProfile, tiers.lodging, 1, 'lodging')[0];
+      }
+    }
+    if (!lodging) {
+      const lodgingResults = await searchPlaces(`${location} 조식 포함 숙소`, {
+        maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.lodging),
+      });
+      lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
+    }
+
+    const [restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw] = await Promise.all([
+      searchPlaces(`${location} 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
+      searchPlaces(`${location} 현지인 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
+      searchPlaces(`${location} 개인 카페`, { maxResultCount: 12, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
       searchPlaces(
-        ageProfile.hasYoungChildren ? `${location} 아이와 가볼만한 곳` : `${location} 가볼만한 곳`,
-        { maxResultCount: 12, minRating: 3.5 }
+        ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 놀이공원 동물원 아쿠아리움` : `${location} 대표 관광명소`,
+        { maxResultCount: 8, minRating: 3.5 }
+      ),
+      searchPlaces(
+        ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 박물관 체험관` : `${location} 박물관 공원 정원`,
+        { maxResultCount: 8, minRating: 3.5 }
       ),
     ]);
 
-    const topRestaurants = rankPlaces(restaurants, ageProfile, tier, 10, 'restaurant');
-    const topCafes = rankPlaces(cafes, ageProfile, tier, 8, 'cafe');
-    const topLodgings = rankPlaces(lodgings, ageProfile, tier, 3, 'lodging');
-    const topAttractions = rankPlaces(attractions, ageProfile, tier, 8, 'attraction');
+    const restaurantMap = new Map();
+    [...restaurantsA, ...restaurantsB].forEach((p) => restaurantMap.set(p.id, p));
+    const mergedRestaurants = [...restaurantMap.values()];
+    const cafes = filterOutChains(cafesRaw);
 
-    const itinerary = buildDayItinerary(dayCount, topRestaurants, topCafes, topAttractions, topLodgings);
+    const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 12, 'restaurant');
+    const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
+    const topAttractionsMorning = rankPlaces(attrMorningRaw, ageProfile, tiers.food, 6, 'attraction');
+    const topAttractionsAfternoon = rankPlaces(attrAfternoonRaw, ageProfile, tiers.food, 6, 'attraction');
+
+    const itinerary = buildDayItinerary(
+      dayCount, topRestaurants, topCafes, topAttractionsMorning, topAttractionsAfternoon,
+      lodging, { departureTime: flightDeparture || null, returnTime: flightReturn || null }
+    );
 
     res.json({
       ageProfile,
       genderCounts,
-      budgetTier: tier,
+      budgetTiers: tiers,
       recommendations: {
         restaurants: topRestaurants,
         cafes: topCafes,
-        lodgings: topLodgings,
-        attractions: topAttractions,
+        lodgings: lodging ? [lodging] : [],
+        attractionsMorning: topAttractionsMorning,
+        attractionsAfternoon: topAttractionsAfternoon,
       },
       itinerary,
     });
@@ -63,6 +93,5 @@ app.post('/api/recommend', async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
-
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Trip planner API running on port ${PORT}`));
