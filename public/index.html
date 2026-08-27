@@ -20,6 +20,7 @@
   .field-row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px;}
   .field label{font-size:13px; font-weight:600; color:var(--ink-soft); display:block; margin-bottom:6px;}
   .field input{width:100%; border:1.5px solid var(--line); border-radius:10px; padding:10px 12px; font-size:15px; background:var(--paper);}
+  .field small{display:block; font-size:11.5px; color:var(--ink-soft); margin-top:4px;}
   .ages-box{display:flex; flex-wrap:wrap; gap:8px; padding:10px; border:1.5px dashed var(--line); border-radius:10px; background:var(--paper); min-height:48px; align-items:center;}
   .age-chip{display:flex; align-items:center; gap:4px; background:#fff; border:1px solid var(--line); border-radius:999px; padding:4px 6px 4px 12px; font-size:13px;}
   .age-chip input{width:42px; border:none; background:transparent; font-size:13px; padding:2px;}
@@ -34,6 +35,7 @@
   .stamp{display:inline-block; border:1.5px solid var(--teal); color:var(--teal-dark); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:700; background:#fff; margin:4px 6px 4px 0;}
   .place-card{background:#fff; border-radius:14px; padding:16px 18px; box-shadow:0 1px 0 rgba(28,43,63,.06); border:1px solid #E1E4D6; margin-bottom:10px;}
   .place-card h3{font-size:15px; margin-bottom:4px;}
+  .place-card .type{display:inline-block; background:var(--paper); color:var(--teal-dark); font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-bottom:4px;}
   .place-card .meta{font-size:12.5px; color:var(--ink-soft);}
   .place-card .price{font-size:13px; color:var(--teal-dark); font-weight:600; margin-top:4px;}
   .place-card .reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
@@ -42,13 +44,6 @@
   .day-tab.active{background:var(--teal); border-color:var(--teal); color:#fff;}
   .day-panel{display:none;}
   .day-panel.active{display:block;}
-  .itin-stop{display:flex; gap:14px; margin-bottom:16px; padding-left:2px; border-left:3px solid var(--amber); padding-left:14px;}
-  .itin-time{min-width:60px; font-weight:700; font-size:13px; color:var(--amber); flex-shrink:0;}
-  .itin-name{font-weight:700; font-size:15px;}
-  .itin-type{font-size:12px; color:var(--teal-dark); font-weight:600;}
-  .itin-addr{font-size:12.5px; color:var(--ink-soft);}
-  .itin-price{font-size:12.5px; color:var(--teal-dark);}
-  .itin-reason{font-size:12.5px; color:var(--ink-soft);}
   .menu-notice{font-size:12px; color:var(--ink-soft); margin-top:4px; font-style:italic;}
   .slot-block{margin-bottom:20px;}
   .slot-header{margin-bottom:8px;}
@@ -58,7 +53,7 @@
   .opt-card{display:flex; gap:10px; align-items:flex-start; background:#fff; border:1.5px solid #E1E4D6; border-radius:12px; padding:12px 14px; cursor:pointer;}
   .opt-card input{margin-top:4px;}
   .opt-name{font-weight:700; font-size:14.5px;}
-  .opt-menu{font-weight:500; color:var(--teal-dark); font-size:13px;}
+  .opt-menu{font-weight:700; color:var(--teal-dark); font-size:12px; background:var(--paper); padding:1px 7px; border-radius:999px; margin-left:6px;}
   .opt-addr{font-size:12.5px; color:var(--ink-soft);}
   .opt-price{font-size:12.5px; color:var(--teal-dark); margin-top:2px;}
   .opt-reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
@@ -75,11 +70,12 @@
     <div class="field-row">
       <div class="field">
         <label for="location">장소</label>
-        <input id="location" type="text" placeholder="예: 천안, 제주" required />
+        <input id="location" type="text" placeholder="예: 천안, 제주, 남큐슈" required />
       </div>
       <div class="field">
         <label for="budget">총 여행경비 (원)</label>
-        <input id="budget" type="number" min="0" placeholder="예: 800000" required />
+        <input id="budget" type="number" min="0" placeholder="예: 3000000" required />
+        <small>숙박+식사+관광 다 합친 전체 금액이에요. (항공권 제외)</small>
       </div>
     </div>
     <div class="field-row">
@@ -90,6 +86,23 @@
       <div class="field">
         <label>인원수</label>
         <input id="peopleCountDisplay" type="text" readonly />
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="lodgingName">숙소명 (선택)</label>
+        <input id="lodgingName" type="text" placeholder="예: 켄싱턴리조트 가고시마" />
+      </div>
+      <div class="field"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="flightDeparture">출국 항공편 시간 (선택, 해외여행 시)</label>
+        <input id="flightDeparture" type="text" placeholder="예: 인천 08:45 출발" />
+      </div>
+      <div class="field">
+        <label for="flightReturn">귀국 항공편 시간 (선택)</label>
+        <input id="flightReturn" type="text" placeholder="예: 20:20 출발 / 22:05 도착" />
       </div>
     </div>
     <div class="field">
@@ -140,6 +153,9 @@ form.addEventListener('submit', async (e) => {
     location: document.getElementById('location').value.trim(),
     budget: Number(document.getElementById('budget').value),
     days: Number(document.getElementById('days').value) || 1,
+    lodgingName: document.getElementById('lodgingName').value.trim(),
+    flightDeparture: document.getElementById('flightDeparture').value.trim(),
+    flightReturn: document.getElementById('flightReturn').value.trim(),
   };
   submitBtn.disabled = true;
   statusEl.className = 'status';
@@ -159,7 +175,9 @@ form.addEventListener('submit', async (e) => {
   } finally { submitBtn.disabled = false; }
 });
 function placeCard(p){
-  return `<div class="place-card"><h3>${p.name}</h3>
+  return `<div class="place-card">
+    ${p.typeLabel ? `<div class="type">${p.typeLabel}</div>` : ''}
+    <h3>${p.name}</h3>
     <div class="meta">★ ${p.rating ?? '-'} · 리뷰 ${p.ratingCount ?? 0} · ${p.address || ''}</div>
     ${p.priceEstimate ? `<div class="price">💰 ${p.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
     ${p.reason ? `<div class="reason">✓ ${p.reason}</div>` : ''}
@@ -182,7 +200,7 @@ function renderItinerary(itinerary){
               <label class="opt-card">
                 <input type="radio" name="d${i}-${slot.time}-${slot.label}" ${oi===0?'checked':''} />
                 <div>
-                  <div class="opt-name">${o.name}${o.menu ? ` <span class="opt-menu">· ${o.menu}</span>` : ''}</div>
+                  <div class="opt-name">${o.name}${o.menu ? ` <span class="opt-menu">${o.menu}</span>` : ''}</div>
                   <div class="opt-addr">${o.address || ''}</div>
                   ${o.priceEstimate ? `<div class="opt-price">💰 ${o.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
                   ${o.reason ? `<div class="opt-reason">✓ ${o.reason}</div>` : ''}
@@ -202,13 +220,16 @@ function renderResults(data){
   const chips = Object.entries(data.ageProfile.counts).filter(([,c])=>c>0).map(([k,c])=>`<span class="stamp">${labels[k]} ${c}명</span>`).join('');
   const genderChip = data.genderCounts
     ? `<span class="stamp">남 ${data.genderCounts.male || 0}명 · 여 ${data.genderCounts.female || 0}명</span>` : '';
+  const tierChips = data.budgetTiers
+    ? `<span class="stamp">숙박 ${data.budgetTiers.lodging.label}</span><span class="stamp">식사/관광 ${data.budgetTiers.food.label}</span>` : '';
   resultsEl.innerHTML = `
-    <div>${chips}${genderChip}<span class="stamp">${data.budgetTier.label}</span></div>
+    <div>${chips}${genderChip}${tierChips}</div>
     ${renderItinerary(data.itinerary)}
     ${renderSection('맛집 전체 목록', data.recommendations.restaurants)}
     ${renderSection('카페 전체 목록', data.recommendations.cafes)}
-    ${renderSection('숙소 전체 목록', data.recommendations.lodgings)}
-    ${renderSection('가볼만한 곳 전체 목록', data.recommendations.attractions)}
+    ${renderSection('숙소', data.recommendations.lodgings)}
+    ${renderSection('오전 추천 관광지', data.recommendations.attractionsMorning)}
+    ${renderSection('오후 추천 관광지', data.recommendations.attractionsAfternoon)}
   `;
   resultsEl.querySelectorAll('.day-tab').forEach(btn => {
     btn.onclick = () => {
