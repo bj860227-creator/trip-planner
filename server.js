@@ -29,7 +29,7 @@ app.post('/api/recommend', async (req, res) => {
     const ageProfile = analyzeAgeGroups(ages);
     const tiers = computeBudgetTiers(Number(budget), people.length, dayCount);
 
-    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 예산대에 맞는 조식 포함 숙소를 검색
+    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 조건을 점점 풀어가며 찾아요
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
       const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
@@ -38,9 +38,20 @@ app.post('/api/recommend', async (req, res) => {
       }
     }
     if (!lodging) {
-      const lodgingResults = await searchPlaces(`${location} 조식 포함 숙소`, {
+      // 1차: 조식 포함 + 예산대 필터
+      let lodgingResults = await searchPlaces(`${location} 조식 포함 숙소`, {
         maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.lodging),
       });
+      // 2차: 결과 없으면 "조식 포함" 빼고 예산대만
+      if (!lodgingResults.length) {
+        lodgingResults = await searchPlaces(`${location} 숙소`, {
+          maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.lodging),
+        });
+      }
+      // 3차: 그래도 없으면 가격 필터까지 빼고 그냥 검색
+      if (!lodgingResults.length) {
+        lodgingResults = await searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.0 });
+      }
       lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
     }
 
