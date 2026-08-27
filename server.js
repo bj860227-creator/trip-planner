@@ -4,7 +4,7 @@ const cors = require('cors');
 const { searchPlaces } = require('./lib/places');
 const {
   analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
-  buildDayItinerary, filterOutChains,
+  buildDayItinerary, filterOutChains, filterByLocation,
 } = require('./lib/recommend');
 
 const app = express();
@@ -29,7 +29,7 @@ app.post('/api/recommend', async (req, res) => {
     const ageProfile = analyzeAgeGroups(ages);
     const tiers = computeBudgetTiers(Number(budget), people.length, dayCount);
 
-    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 조건을 점점 풀어가며 찾아요
+    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 (가격 필터 없이) 평점순으로 찾고 점수 계산 때 예산 반영
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
       const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
@@ -38,46 +38,39 @@ app.post('/api/recommend', async (req, res) => {
       }
     }
     if (!lodging) {
-      // 1차: 조식 포함 + 예산대 필터
-      let lodgingResults = await searchPlaces(`${location} 조식 포함 숙소`, {
-        maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.lodging),
-      });
-      // 2차: 결과 없으면 "조식 포함" 빼고 예산대만
-      if (!lodgingResults.length) {
-        lodgingResults = await searchPlaces(`${location} 숙소`, {
-          maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.lodging),
-        });
-      }
-      // 3차: 그래도 없으면 가격 필터까지 빼고 그냥 검색
+      let lodgingResults = await searchPlaces(`${location} 조식 포함 숙소`, { maxResultCount: 10, minRating: 3.5 });
       if (!lodgingResults.length) {
         lodgingResults = await searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.0 });
       }
+      lodgingResults = filterByLocation(lodgingResults, location);
       lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
     }
 
     const [restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
       searchPlaces(`${location} 현지인 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
-      searchPlaces(`${location} 개인 카페`, { maxResultCount: 12, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
+      searchPlaces(`${location} 개인 카페`, { maxResultCount: 12, minRating: 3.8 }),
       searchPlaces(
         ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 놀이공원 동물원 아쿠아리움` : `${location} 대표 관광명소`,
-        { maxResultCount: 8, minRating: 3.5 }
+        { maxResultCount: 10, minRating: 3.5 }
       ),
       searchPlaces(
         ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 박물관 체험관` : `${location} 박물관 공원 정원`,
-        { maxResultCount: 8, minRating: 3.5 }
+        { maxResultCount: 10, minRating: 3.5 }
       ),
     ]);
 
     const restaurantMap = new Map();
     [...restaurantsA, ...restaurantsB].forEach((p) => restaurantMap.set(p.id, p));
-    const mergedRestaurants = [...restaurantMap.values()];
-    const cafes = filterOutChains(cafesRaw);
+    const mergedRestaurants = filterByLocation([...restaurantMap.values()], location);
+    const cafes = filterByLocation(filterOutChains(cafesRaw), location);
+    const attrMorning = filterByLocation(attrMorningRaw, location);
+    const attrAfternoon = filterByLocation(attrAfternoonRaw, location);
 
     const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 12, 'restaurant');
     const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
-    const topAttractionsMorning = rankPlaces(attrMorningRaw, ageProfile, tiers.food, 6, 'attraction');
-    const topAttractionsAfternoon = rankPlaces(attrAfternoonRaw, ageProfile, tiers.food, 6, 'attraction');
+    const topAttractionsMorning = rankPlaces(attrMorning, ageProfile, tiers.food, 6, 'attraction');
+    const topAttractionsAfternoon = rankPlaces(attrAfternoon, ageProfile, tiers.food, 6, 'attraction');
 
     const itinerary = buildDayItinerary(
       dayCount, topRestaurants, topCafes, topAttractionsMorning, topAttractionsAfternoon,
