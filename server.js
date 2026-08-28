@@ -2,9 +2,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { searchPlaces } = require('./lib/places');
+const { searchLocal } = require('./lib/naver');
 const {
   analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
-  buildDayItinerary, filterOutChains, filterByLocation,
+  buildDayItinerary, filterOutChains, filterByLocation, markCrossVerified,
 } = require('./lib/recommend');
 
 const app = express();
@@ -29,7 +30,7 @@ app.post('/api/recommend', async (req, res) => {
     const ageProfile = analyzeAgeGroups(ages);
     const tiers = computeBudgetTiers(Number(budget), people.length, dayCount);
 
-    // 숙소: 이름을 지정하셨으면 그 숙소를, 아니면 (가격 필터 없이) 평점순으로 찾고 점수 계산 때 예산 반영
+    // 숙소
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
       const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
@@ -46,7 +47,11 @@ app.post('/api/recommend', async (req, res) => {
       lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
     }
 
-    const [restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw] = await Promise.all([
+    // 구글 + 네이버 병렬 검색
+    const [
+      restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw,
+      naverRestaurants, naverCafes,
+    ] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
       searchPlaces(`${location} 현지인 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
       searchPlaces(`${location} 개인 카페`, { maxResultCount: 12, minRating: 3.8 }),
@@ -58,14 +63,20 @@ app.post('/api/recommend', async (req, res) => {
         ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 박물관 체험관` : `${location} 박물관 공원 정원`,
         { maxResultCount: 10, minRating: 3.5 }
       ),
+      searchLocal(`${location} 맛집`, 30),
+      searchLocal(`${location} 카페`, 30),
     ]);
 
     const restaurantMap = new Map();
     [...restaurantsA, ...restaurantsB].forEach((p) => restaurantMap.set(p.id, p));
-    const mergedRestaurants = filterByLocation([...restaurantMap.values()], location);
-    const cafes = filterByLocation(filterOutChains(cafesRaw), location);
+    let mergedRestaurants = filterByLocation([...restaurantMap.values()], location);
+    let cafes = filterByLocation(filterOutChains(cafesRaw), location);
     const attrMorning = filterByLocation(attrMorningRaw, location);
     const attrAfternoon = filterByLocation(attrAfternoonRaw, location);
+
+    // 네이버에서도 검색되는 곳에 교차검증 표시
+    mergedRestaurants = markCrossVerified(mergedRestaurants, naverRestaurants);
+    cafes = markCrossVerified(cafes, naverCafes);
 
     const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 12, 'restaurant');
     const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
