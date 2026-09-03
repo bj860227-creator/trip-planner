@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { searchPlaces } = require('./lib/places');
-const { searchLocal } = require('./lib/naver');
+const { searchLocal, searchBlog } = require('./lib/naver');
 const {
   analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
   buildDayItinerary, filterOutChains, filterByLocation, markCrossVerified,
@@ -12,6 +12,30 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+/** 블로그 검색 결과에서 쓸만한 문장 하나를 골라요 */
+function pickBlogQuote(blogItems) {
+  const candidate = blogItems.find((b) => b.description && b.description.length >= 15);
+  if (!candidate) return null;
+  const text = candidate.description;
+  return text.length > 55 ? text.slice(0, 55) + '…' : text;
+}
+
+/** 후보 장소들에 네이버 블로그 후기 문구를 붙여서 reason을 다시 만들어요 */
+async function attachBlogQuotes(places, location) {
+  const results = await Promise.all(
+    places.map((p) => searchBlog(`${location} ${p.name} 후기`, 3))
+  );
+  places.forEach((p, i) => {
+    const quote = pickBlogQuote(results[i]);
+    if (quote) {
+      const restOfReason = (p.reason || '').replace(/^방문자 리뷰: "[^"]*"\s*·?\s*/, '');
+      p.blogQuote = quote;
+      p.reason = `네이버 블로그 후기: "${quote}"${restOfReason ? ' · ' + restOfReason : ''}`;
+    }
+  });
+  return places;
+}
 
 app.post('/api/recommend', async (req, res) => {
   try {
@@ -47,7 +71,6 @@ app.post('/api/recommend', async (req, res) => {
       lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
     }
 
-    // 구글 + 네이버 병렬 검색
     const [
       restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw,
       naverRestaurants, naverCafes,
@@ -74,7 +97,6 @@ app.post('/api/recommend', async (req, res) => {
     const attrMorning = filterByLocation(attrMorningRaw, location);
     const attrAfternoon = filterByLocation(attrAfternoonRaw, location);
 
-    // 네이버에서도 검색되는 곳에 교차검증 표시
     mergedRestaurants = markCrossVerified(mergedRestaurants, naverRestaurants);
     cafes = markCrossVerified(cafes, naverCafes);
 
@@ -82,6 +104,11 @@ app.post('/api/recommend', async (req, res) => {
     const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
     const topAttractionsMorning = rankPlaces(attrMorning, ageProfile, tiers.food, 6, 'attraction');
     const topAttractionsAfternoon = rankPlaces(attrAfternoon, ageProfile, tiers.food, 6, 'attraction');
+
+    // 최종 후보들에만 네이버 블로그 후기 붙이기 (API 호출 절약)
+    await attachBlogQuotes(topRestaurants, location);
+    await attachBlogQuotes(topCafes, location);
+    if (lodging) await attachBlogQuotes([lodging], location);
 
     const itinerary = buildDayItinerary(
       dayCount, topRestaurants, topCafes, topAttractionsMorning, topAttractionsAfternoon,
