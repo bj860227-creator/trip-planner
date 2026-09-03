@@ -5,7 +5,7 @@ const { searchPlaces } = require('./lib/places');
 const { searchLocal, searchBlog } = require('./lib/naver');
 const {
   analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
-  buildDayItinerary, filterOutChains, filterByLocation, markCrossVerified,
+  buildDayItinerary, filterOutChains, filterByLocation, filterByDistance, markCrossVerified,
 } = require('./lib/recommend');
 
 const app = express();
@@ -13,7 +13,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-/** 블로그 검색 결과에서 쓸만한 문장 하나를 골라요 */
 function pickBlogQuote(blogItems) {
   const candidate = blogItems.find((b) => b.description && b.description.length >= 15);
   if (!candidate) return null;
@@ -21,7 +20,6 @@ function pickBlogQuote(blogItems) {
   return text.length > 55 ? text.slice(0, 55) + '…' : text;
 }
 
-/** 후보 장소들에 네이버 블로그 후기 문구를 붙여서 reason을 다시 만들어요 */
 async function attachBlogQuotes(places, location) {
   const results = await Promise.all(
     places.map((p) => searchBlog(`${location} ${p.name} 후기`, 3))
@@ -29,7 +27,7 @@ async function attachBlogQuotes(places, location) {
   places.forEach((p, i) => {
     const quote = pickBlogQuote(results[i]);
     if (quote) {
-      const restOfReason = (p.reason || '').replace(/^방문자 리뷰: "[^"]*"\s*·?\s*/, '');
+      const restOfReason = (p.reason || '').replace(/^(숙소 내 시설\(이동 없이 이용 가능\)\s*·?\s*)?방문자 리뷰: "[^"]*"\s*·?\s*/, '');
       p.blogQuote = quote;
       p.reason = `네이버 블로그 후기: "${quote}"${restOfReason ? ' · ' + restOfReason : ''}`;
     }
@@ -54,12 +52,21 @@ app.post('/api/recommend', async (req, res) => {
     const ageProfile = analyzeAgeGroups(ages);
     const tiers = computeBudgetTiers(Number(budget), people.length, dayCount);
 
+    let center = null;
+    try {
+      const centerResult = await searchPlaces(location, { maxResultCount: 1 });
+      if (centerResult[0] && centerResult[0].lat != null) {
+        center = { lat: centerResult[0].lat, lng: centerResult[0].lng };
+      }
+    } catch (e) { /* 무시하고 계속 */ }
+
     // 숙소
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
       const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
       if (named[0]) {
         lodging = rankPlaces(named, ageProfile, tiers.lodging, 1, 'lodging')[0];
+        if (!center && lodging.lat != null) center = { lat: lodging.lat, lng: lodging.lng };
       }
     }
     if (!lodging) {
@@ -67,12 +74,26 @@ app.post('/api/recommend', async (req, res) => {
       if (!lodgingResults.length) {
         lodgingResults = await searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.0 });
       }
-      lodgingResults = filterByLocation(lodgingResults, location);
+      lodgingResults = center ? filterByDistance(lodgingResults, center, 20) : filterByLocation(lodgingResults, location);
       lodging = rankPlaces(lodgingResults, ageProfile, tiers.lodging, 3, 'lodging')[0] || null;
+    }
+    if (!center && lodging && lodging.lat != null) center = { lat: lodging.lat, lng: lodging.lng };
+
+    // 숙소 안에 있는 식당/카페(숙소 이름으로 검색) — 리솜처럼 대형 리조트 안 시설을 잡기 위함
+    let lodgingRestaurants = [];
+    let lodgingCafes = [];
+    if (lodging) {
+      const lodgingCenter = { lat: lodging.lat, lng: lodging.lng };
+      const [lr, lc] = await Promise.all([
+        searchPlaces(`${lodging.name} 레스토랑`, { maxResultCount: 5 }),
+        searchPlaces(`${lodging.name} 카페`, { maxResultCount: 5 }),
+      ]);
+      lodgingRestaurants = filterByDistance(lr, lodgingCenter, 2).map((p) => ({ ...p, isInHouse: true }));
+      lodgingCafes = filterByDistance(lc, lodgingCenter, 2).map((p) => ({ ...p, isInHouse: true }));
     }
 
     const [
-      restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw,
+      restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw, activityRaw,
       naverRestaurants, naverCafes,
     ] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
@@ -86,16 +107,21 @@ app.post('/api/recommend', async (req, res) => {
         ageProfile.hasYoungChildren ? `${location} 아이와 가기 좋은 박물관 체험관` : `${location} 박물관 공원 정원`,
         { maxResultCount: 10, minRating: 3.5 }
       ),
+      searchPlaces(`${location} 케이블카 출렁다리 전망대`, { maxResultCount: 8, minRating: 3.5 }),
       searchLocal(`${location} 맛집`, 30),
       searchLocal(`${location} 카페`, 30),
     ]);
 
     const restaurantMap = new Map();
-    [...restaurantsA, ...restaurantsB].forEach((p) => restaurantMap.set(p.id, p));
-    let mergedRestaurants = filterByLocation([...restaurantMap.values()], location);
-    let cafes = filterByLocation(filterOutChains(cafesRaw), location);
-    const attrMorning = filterByLocation(attrMorningRaw, location);
-    const attrAfternoon = filterByLocation(attrAfternoonRaw, location);
+    [...restaurantsA, ...restaurantsB, ...lodgingRestaurants].forEach((p) => restaurantMap.set(p.id, p));
+    let mergedRestaurants = center ? filterByDistance([...restaurantMap.values()], center, 20) : filterByLocation([...restaurantMap.values()], location);
+
+    const cafeMap = new Map();
+    [...filterOutChains(cafesRaw), ...lodgingCafes].forEach((p) => cafeMap.set(p.id, p));
+    let cafes = center ? filterByDistance([...cafeMap.values()], center, 15) : filterByLocation([...cafeMap.values()], location);
+
+    let attrMorning = center ? filterByDistance(attrMorningRaw, center, 30) : filterByLocation(attrMorningRaw, location);
+    let attrAfternoon = center ? filterByDistance([...attrAfternoonRaw, ...activityRaw], center, 30) : filterByLocation([...attrAfternoonRaw, ...activityRaw], location);
 
     mergedRestaurants = markCrossVerified(mergedRestaurants, naverRestaurants);
     cafes = markCrossVerified(cafes, naverCafes);
@@ -103,9 +129,8 @@ app.post('/api/recommend', async (req, res) => {
     const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 12, 'restaurant');
     const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
     const topAttractionsMorning = rankPlaces(attrMorning, ageProfile, tiers.food, 6, 'attraction');
-    const topAttractionsAfternoon = rankPlaces(attrAfternoon, ageProfile, tiers.food, 6, 'attraction');
+    const topAttractionsAfternoon = rankPlaces(attrAfternoon, ageProfile, tiers.food, 8, 'attraction');
 
-    // 최종 후보들에만 네이버 블로그 후기 붙이기 (API 호출 절약)
     await attachBlogQuotes(topRestaurants, location);
     await attachBlogQuotes(topCafes, location);
     if (lodging) await attachBlogQuotes([lodging], location);
