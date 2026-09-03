@@ -35,7 +35,8 @@
   .stamp{display:inline-block; border:1.5px solid var(--teal); color:var(--teal-dark); border-radius:999px; padding:5px 12px; font-size:12px; font-weight:700; background:#fff; margin:4px 6px 4px 0;}
   .place-card{background:#fff; border-radius:14px; padding:16px 18px; box-shadow:0 1px 0 rgba(28,43,63,.06); border:1px solid #E1E4D6; margin-bottom:10px;}
   .place-card h3{font-size:15px; margin-bottom:4px;}
-  .place-card .type{display:inline-block; background:var(--paper); color:var(--teal-dark); font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-bottom:4px;}
+  .place-card .type{display:inline-block; background:var(--paper); color:var(--teal-dark); font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-bottom:4px; margin-right:4px;}
+  .place-card .decaf{display:inline-block; background:#E9F5F0; color:var(--teal-dark); font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:999px; margin-bottom:4px;}
   .place-card .meta{font-size:12.5px; color:var(--ink-soft);}
   .place-card .price{font-size:13px; color:var(--teal-dark); font-weight:600; margin-top:4px;}
   .place-card .reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
@@ -54,6 +55,7 @@
   .opt-card input{margin-top:4px;}
   .opt-name{font-weight:700; font-size:14.5px;}
   .opt-menu{font-weight:700; color:var(--teal-dark); font-size:12px; background:var(--paper); padding:1px 7px; border-radius:999px; margin-left:6px;}
+  .opt-decaf{font-weight:700; color:var(--teal-dark); font-size:11px; background:#E9F5F0; padding:1px 7px; border-radius:999px; margin-left:4px;}
   .opt-addr{font-size:12.5px; color:var(--ink-soft);}
   .opt-price{font-size:12.5px; color:var(--teal-dark); margin-top:2px;}
   .opt-reason{font-size:12.5px; color:var(--ink-soft); margin-top:2px;}
@@ -159,7 +161,7 @@ form.addEventListener('submit', async (e) => {
   };
   submitBtn.disabled = true;
   statusEl.className = 'status';
-  statusEl.textContent = '여정을 짜는 중입니다... (최대 1분 정도 걸릴 수 있어요)';
+  statusEl.textContent = '여정을 짜는 중입니다... (리뷰까지 분석해서 최대 1~2분 걸릴 수 있어요)';
   resultsEl.innerHTML = '';
   try {
     const res = await fetch('/api/recommend', {
@@ -175,8 +177,9 @@ form.addEventListener('submit', async (e) => {
   } finally { submitBtn.disabled = false; }
 });
 function placeCard(p){
+  const menuTags = (p.menuHighlights && p.menuHighlights.length) ? p.menuHighlights.map(m=>`<span class="type">${m}</span>`).join('') : (p.typeLabel ? `<span class="type">${p.typeLabel}</span>` : '');
   return `<div class="place-card">
-    ${p.typeLabel ? `<div class="type">${p.typeLabel}</div>` : ''}
+    ${menuTags}${p.hasDecaf ? `<span class="decaf">디카페인 있음</span>` : ''}
     <h3>${p.name}</h3>
     <div class="meta">★ ${p.rating ?? '-'} · 리뷰 ${p.ratingCount ?? 0} · ${p.address || ''}</div>
     ${p.priceEstimate ? `<div class="price">💰 ${p.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
@@ -200,7 +203,7 @@ function renderItinerary(itinerary){
               <label class="opt-card">
                 <input type="radio" name="d${i}-${slot.time}-${slot.label}" ${oi===0?'checked':''} />
                 <div>
-                  <div class="opt-name">${o.name}${o.menu ? ` <span class="opt-menu">${o.menu}</span>` : ''}</div>
+                  <div class="opt-name">${o.name}${o.menu ? ` <span class="opt-menu">${o.menu}</span>` : ''}${o.hasDecaf ? `<span class="opt-decaf">디카페인</span>` : ''}</div>
                   <div class="opt-addr">${o.address || ''}</div>
                   ${o.priceEstimate ? `<div class="opt-price">💰 ${o.priceEstimate} <span style="opacity:.6">(추정치)</span></div>` : ''}
                   ${o.reason ? `<div class="opt-reason">✓ ${o.reason}</div>` : ''}
@@ -211,7 +214,7 @@ function renderItinerary(itinerary){
     </div>`).join('');
   return `
     <div class="section-title">일정표</div>
-    <div class="menu-notice">※ 정확한 메뉴는 없어서 대략적인 음식 종류만 안내해요. 선택지 중 마음에 드는 곳으로 골라서 다니시면 돼요.</div>
+    <div class="menu-notice">※ 메뉴/디카페인 정보는 방문자 리뷰 텍스트를 분석해서 뽑은 참고용이에요. 선택지 중 마음에 드는 곳으로 골라서 다니시면 돼요.</div>
     <div class="day-tabs">${tabs}</div>
     ${panels}`;
 }
