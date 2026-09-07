@@ -95,7 +95,10 @@
         <label for="lodgingName">숙소명 (선택)</label>
         <input id="lodgingName" type="text" placeholder="예: 켄싱턴리조트 가고시마" />
       </div>
-      <div class="field"></div>
+      <div class="field">
+        <label for="departureLocation">출발지 (선택, 휴게소 추천용)</label>
+        <input id="departureLocation" type="text" placeholder="예: 평택, 광주" />
+      </div>
     </div>
     <div class="field-row">
       <div class="field">
@@ -156,6 +159,7 @@ form.addEventListener('submit', async (e) => {
     budget: Number(document.getElementById('budget').value),
     days: Number(document.getElementById('days').value) || 1,
     lodgingName: document.getElementById('lodgingName').value.trim(),
+    departureLocation: document.getElementById('departureLocation').value.trim(),
     flightDeparture: document.getElementById('flightDeparture').value.trim(),
     flightReturn: document.getElementById('flightReturn').value.trim(),
   };
@@ -214,7 +218,7 @@ function renderItinerary(itinerary){
     </div>`).join('');
   return `
     <div class="section-title">일정표</div>
-    <div class="menu-notice">※ 메뉴/디카페인 정보는 방문자 리뷰 텍스트를 분석해서 뽑은 참고용이에요. 선택지 중 마음에 드는 곳으로 골라서 다니시면 돼요.</div>
+    <div class="menu-notice">※ 메뉴/디카페인/휴게소 정보는 방문자 리뷰와 검색 결과를 참고한 것이라, 실제와 다를 수 있어요.</div>
     <div class="day-tabs">${tabs}</div>
     ${panels}`;
 }
@@ -225,14 +229,21 @@ function renderResults(data){
     ? `<span class="stamp">남 ${data.genderCounts.male || 0}명 · 여 ${data.genderCounts.female || 0}명</span>` : '';
   const tierChips = data.budgetTiers
     ? `<span class="stamp">숙박 ${data.budgetTiers.lodging.label}</span><span class="stamp">식사/관광 ${data.budgetTiers.food.label}</span>` : '';
+  const clinicBlock = data.pediatricClinic ? `
+    <div class="section-title">근처 소아과</div>
+    <div class="place-card">
+      <h3>${data.pediatricClinic.name}</h3>
+      <div class="meta">★ ${data.pediatricClinic.rating ?? '-'} · ${data.pediatricClinic.address || ''}</div>
+      <div class="reason">✓ 주말 진료 여부는 방문 전 전화로 꼭 확인해주세요.</div>
+    </div>` : '';
   resultsEl.innerHTML = `
     <div>${chips}${genderChip}${tierChips}</div>
     ${renderItinerary(data.itinerary)}
     ${renderSection('맛집 전체 목록', data.recommendations.restaurants)}
     ${renderSection('카페 전체 목록', data.recommendations.cafes)}
     ${renderSection('숙소', data.recommendations.lodgings)}
-    ${renderSection('오전 추천 관광지', data.recommendations.attractionsMorning)}
-    ${renderSection('오후 추천 관광지', data.recommendations.attractionsAfternoon)}
+    ${renderSection('추천 관광지', data.recommendations.attractions)}
+    ${clinicBlock}
   `;
   resultsEl.querySelectorAll('.day-tab').forEach(btn => {
     btn.onclick = () => {
