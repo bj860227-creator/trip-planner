@@ -37,7 +37,7 @@ async function attachBlogQuotes(places, location) {
 
 app.post('/api/recommend', async (req, res) => {
   try {
-    const { people, location, budget, days, lodgingName, flightDeparture, flightReturn } = req.body;
+    const { people, location, budget, days, lodgingName, departureLocation, flightDeparture, flightReturn } = req.body;
 
     if (!Array.isArray(people) || people.length === 0 || !location || !budget) {
       return res.status(400).json({ error: 'people(배열), location, budget은 필수입니다.' });
@@ -79,7 +79,7 @@ app.post('/api/recommend', async (req, res) => {
     }
     if (!center && lodging && lodging.lat != null) center = { lat: lodging.lat, lng: lodging.lng };
 
-    // 숙소 안에 있는 식당/카페(숙소 이름으로 검색) — 리솜처럼 대형 리조트 안 시설을 잡기 위함
+    // 숙소 내 식당/카페
     let lodgingRestaurants = [];
     let lodgingCafes = [];
     if (lodging) {
@@ -92,8 +92,16 @@ app.post('/api/recommend', async (req, res) => {
       lodgingCafes = filterByDistance(lc, lodgingCenter, 2).map((p) => ({ ...p, isInHouse: true }));
     }
 
+    const clinicPromise = ageProfile.hasYoungChildren
+      ? searchPlaces(`${location} 소아과`, { maxResultCount: 5, minRating: 3.0 })
+      : Promise.resolve([]);
+
+    const restStopQuery = departureLocation && departureLocation.trim()
+      ? `${departureLocation.trim()}에서 ${location} 가는 길 고속도로 휴게소`
+      : `${location} 고속도로 휴게소`;
+
     const [
-      restaurantsA, restaurantsB, cafesRaw, attrMorningRaw, attrAfternoonRaw, activityRaw,
+      restaurantsA, restaurantsB, cafesRaw, attrA, attrB, activityRaw, restStopRaw, clinicRaw,
       naverRestaurants, naverCafes,
     ] = await Promise.all([
       searchPlaces(`${location} 맛집`, { maxResultCount: 10, minRating: 3.8, priceLevels: priceLevelsForTier(tiers.food) }),
@@ -108,6 +116,8 @@ app.post('/api/recommend', async (req, res) => {
         { maxResultCount: 10, minRating: 3.5 }
       ),
       searchPlaces(`${location} 케이블카 출렁다리 전망대`, { maxResultCount: 8, minRating: 3.5 }),
+      searchPlaces(restStopQuery, { maxResultCount: 8, minRating: 3.5 }),
+      clinicPromise,
       searchLocal(`${location} 맛집`, 30),
       searchLocal(`${location} 카페`, 30),
     ]);
@@ -120,25 +130,29 @@ app.post('/api/recommend', async (req, res) => {
     [...filterOutChains(cafesRaw), ...lodgingCafes].forEach((p) => cafeMap.set(p.id, p));
     let cafes = center ? filterByDistance([...cafeMap.values()], center, 15) : filterByLocation([...cafeMap.values()], location);
 
-    let attrMorning = center ? filterByDistance(attrMorningRaw, center, 30) : filterByLocation(attrMorningRaw, location);
-    let attrAfternoon = center ? filterByDistance([...attrAfternoonRaw, ...activityRaw], center, 30) : filterByLocation([...attrAfternoonRaw, ...activityRaw], location);
+    const attrMap = new Map();
+    [...attrA, ...attrB, ...activityRaw].forEach((p) => attrMap.set(p.id, p));
+    let attractions = center ? filterByDistance([...attrMap.values()], center, 30) : filterByLocation([...attrMap.values()], location);
 
     mergedRestaurants = markCrossVerified(mergedRestaurants, naverRestaurants);
     cafes = markCrossVerified(cafes, naverCafes);
 
-    const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 12, 'restaurant');
-    const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 8, 'cafe');
-    const topAttractionsMorning = rankPlaces(attrMorning, ageProfile, tiers.food, 6, 'attraction');
-    const topAttractionsAfternoon = rankPlaces(attrAfternoon, ageProfile, tiers.food, 8, 'attraction');
+    const topRestaurants = rankPlaces(mergedRestaurants, ageProfile, tiers.food, 14, 'restaurant');
+    const topCafes = rankPlaces(cafes, ageProfile, tiers.food, 10, 'cafe');
+    const topAttractions = rankPlaces(attractions, ageProfile, tiers.food, 14, 'attraction');
+    const topRestStops = rankPlaces(restStopRaw, ageProfile, tiers.food, 2, 'restaurant');
 
     await attachBlogQuotes(topRestaurants, location);
     await attachBlogQuotes(topCafes, location);
     if (lodging) await attachBlogQuotes([lodging], location);
 
     const itinerary = buildDayItinerary(
-      dayCount, topRestaurants, topCafes, topAttractionsMorning, topAttractionsAfternoon,
-      lodging, { departureTime: flightDeparture || null, returnTime: flightReturn || null }
+      dayCount, topRestaurants, topCafes, topAttractions,
+      lodging, topRestStops, { departureTime: flightDeparture || null, returnTime: flightReturn || null }
     );
+
+    const clinicSorted = center ? filterByDistance(clinicRaw, center, 15) : clinicRaw;
+    const clinic = clinicSorted.slice().sort((a, b) => (b.rating || 0) - (a.rating || 0))[0] || null;
 
     res.json({
       ageProfile,
@@ -148,10 +162,10 @@ app.post('/api/recommend', async (req, res) => {
         restaurants: topRestaurants,
         cafes: topCafes,
         lodgings: lodging ? [lodging] : [],
-        attractionsMorning: topAttractionsMorning,
-        attractionsAfternoon: topAttractionsAfternoon,
+        attractions: topAttractions,
       },
       itinerary,
+      pediatricClinic: clinic ? { name: clinic.name, address: clinic.address, rating: clinic.rating } : null,
     });
   } catch (err) {
     console.error(err);
