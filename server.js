@@ -60,7 +60,6 @@ app.post('/api/recommend', async (req, res) => {
       }
     } catch (e) { /* 무시하고 계속 */ }
 
-    // 숙소 — 예산의 숙박 등급(tiers.lodging)을 검색 단계부터 반영
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
       const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
@@ -79,7 +78,6 @@ app.post('/api/recommend', async (req, res) => {
         });
       }
       if (!lodgingResults.length) {
-        // 그래도 없으면 가격 필터까지 빼고 마지막으로 시도
         lodgingResults = await searchPlaces(`${location} 숙소`, { maxResultCount: 10, minRating: 3.0 });
       }
       lodgingResults = center ? filterByDistance(lodgingResults, center, 20) : filterByLocation(lodgingResults, location);
@@ -87,7 +85,6 @@ app.post('/api/recommend', async (req, res) => {
     }
     if (!center && lodging && lodging.lat != null) center = { lat: lodging.lat, lng: lodging.lng };
 
-    // 숙소 내 식당/카페 (가격 필터는 적용 안 함 — 숙소 안 시설은 선택지가 적어서 다 보여주는 게 나아요)
     let lodgingRestaurants = [];
     let lodgingCafes = [];
     if (lodging) {
@@ -104,7 +101,6 @@ app.post('/api/recommend', async (req, res) => {
       ? searchPlaces(`${location} 소아과`, { maxResultCount: 5, minRating: 3.0 })
       : Promise.resolve([]);
 
-    // 아이 동반 시 "아이와 가기 좋은 식당" 도 예산 등급(tiers.food)에 맞춰 검색
     const kidFriendlyRestaurantPromise = ageProfile.hasYoungChildren
       ? searchPlaces(`${location} 아이와 가기 좋은 식당 백반 고기 돈까스`, {
           maxResultCount: 10, minRating: 3.5, priceLevels: priceLevelsForTier(tiers.food),
