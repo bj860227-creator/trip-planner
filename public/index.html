@@ -228,7 +228,7 @@ function renderResults(data){
   const genderChip = data.genderCounts
     ? `<span class="stamp">남 ${data.genderCounts.male || 0}명 · 여 ${data.genderCounts.female || 0}명</span>` : '';
   const tierChips = data.budgetTiers
-    ? `<span class="stamp">숙박 ${data.budgetTiers.lodging.label}</span><span class="stamp">식사/관광 ${data.budgetTiers.food.label}</span>` : '';
+    ? `<span class="stamp">숙박 ${data.budgetTiers.lodging.label} (1박 약 ${data.budgetTiers.lodging.amount.toLocaleString()}원)</span><span class="stamp">식사/관광 ${data.budgetTiers.food.label} (1인 1일 약 ${data.budgetTiers.food.amount.toLocaleString()}원)</span>` : '';
   const clinicBlock = data.pediatricClinic ? `
     <div class="section-title">근처 소아과</div>
     <div class="place-card">
