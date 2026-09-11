@@ -6,6 +6,7 @@ const { searchLocal, searchBlog } = require('./lib/naver');
 const {
   analyzeAgeGroups, computeBudgetTiers, priceLevelsForTier, rankPlaces,
   buildDayItinerary, filterOutChains, filterByLocation, filterByDistance, markCrossVerified,
+  findNaverOnlyCandidates,
 } = require('./lib/recommend');
 
 const app = express();
@@ -27,7 +28,7 @@ async function attachBlogQuotes(places, location) {
   places.forEach((p, i) => {
     const quote = pickBlogQuote(results[i]);
     if (quote) {
-      const restOfReason = (p.reason || '').replace(/^(숙소 내 시설\(이동 없이 이용 가능\)\s*·?\s*)?방문자 리뷰: "[^"]*"\s*·?\s*/, '');
+      const restOfReason = (p.reason || '').replace(/^(네이버에서 특히 많이 찾는 현지 인기 맛집\s*·?\s*)?(숙소 내 시설\(이동 없이 이용 가능\)\s*·?\s*)?방문자 리뷰: "[^"]*"\s*·?\s*/, '');
       p.blogQuote = quote;
       p.reason = `네이버 블로그 후기: "${quote}"${restOfReason ? ' · ' + restOfReason : ''}`;
     }
@@ -136,10 +137,26 @@ app.post('/api/recommend', async (req, res) => {
 
     const restaurantMap = new Map();
     [...restaurantsA, ...restaurantsB, ...restaurantsC, ...lodgingRestaurants].forEach((p) => restaurantMap.set(p.id, p));
-    let mergedRestaurants = center ? filterByDistance([...restaurantMap.values()], center, 20) : filterByLocation([...restaurantMap.values()], location);
 
     const cafeMap = new Map();
     [...filterOutChains(cafesRaw), ...lodgingCafes].forEach((p) => cafeMap.set(p.id, p));
+
+    // 네이버에만 있고 구글엔 없는 상위 후보를 개별 조회해서 추가 (비용 절충: 6개/5개로 제한)
+    const naverOnlyRestaurantCandidates = findNaverOnlyCandidates([...restaurantMap.values()], naverRestaurants, 6);
+    const naverOnlyCafeCandidates = findNaverOnlyCandidates([...cafeMap.values()], naverCafes, 5);
+
+    const [naverRestaurantLookups, naverCafeLookups] = await Promise.all([
+      Promise.all(naverOnlyRestaurantCandidates.map((np) => searchPlaces(`${location} ${np.name}`, { maxResultCount: 1 }))),
+      Promise.all(naverOnlyCafeCandidates.map((np) => searchPlaces(`${location} ${np.name}`, { maxResultCount: 1 }))),
+    ]);
+    naverRestaurantLookups.forEach((arr) => {
+      if (arr[0]) restaurantMap.set(arr[0].id, { ...arr[0], isNaverExclusive: true });
+    });
+    naverCafeLookups.forEach((arr) => {
+      if (arr[0]) cafeMap.set(arr[0].id, { ...arr[0], isNaverExclusive: true });
+    });
+
+    let mergedRestaurants = center ? filterByDistance([...restaurantMap.values()], center, 20) : filterByLocation([...restaurantMap.values()], location);
     let cafes = center ? filterByDistance([...cafeMap.values()], center, 15) : filterByLocation([...cafeMap.values()], location);
 
     const attrMap = new Map();
