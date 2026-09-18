@@ -61,11 +61,17 @@ app.post('/api/recommend', async (req, res) => {
       }
     } catch (e) { /* 무시하고 계속 */ }
 
+    // 숙소 — 이름을 지정하셨으면 "지역명 + 숙소명"으로 검색하고, 그래도 지역에서 너무 멀면 무시해요
     let lodging = null;
     if (lodgingName && lodgingName.trim()) {
-      const named = await searchPlaces(lodgingName.trim(), { maxResultCount: 1 });
-      if (named[0]) {
-        lodging = rankPlaces(named, ageProfile, tiers.lodging, 1, 'lodging')[0];
+      const named = await searchPlaces(`${location} ${lodgingName.trim()}`, { maxResultCount: 3 });
+      let candidate = named[0];
+      if (candidate && center && candidate.lat != null) {
+        const tooFar = filterByDistance([candidate], center, 40).length === 0;
+        if (tooFar) candidate = null; // 지정한 지역에서 40km 넘게 떨어져 있으면 잘못 찾은 것으로 보고 무시
+      }
+      if (candidate) {
+        lodging = rankPlaces([candidate], ageProfile, tiers.lodging, 1, 'lodging')[0];
         if (!center && lodging.lat != null) center = { lat: lodging.lat, lng: lodging.lng };
       }
     }
@@ -141,7 +147,6 @@ app.post('/api/recommend', async (req, res) => {
     const cafeMap = new Map();
     [...filterOutChains(cafesRaw), ...lodgingCafes].forEach((p) => cafeMap.set(p.id, p));
 
-    // 네이버에만 있고 구글엔 없는 상위 후보를 개별 조회해서 추가 (비용 절충: 6개/5개로 제한)
     const naverOnlyRestaurantCandidates = findNaverOnlyCandidates([...restaurantMap.values()], naverRestaurants, 6);
     const naverOnlyCafeCandidates = findNaverOnlyCandidates([...cafeMap.values()], naverCafes, 5);
 
